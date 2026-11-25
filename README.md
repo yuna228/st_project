@@ -15,7 +15,7 @@
 
 
 ## 데이터
-- 출처(주소): 경기 데이터드림 (https://data.gg.go.kr/portal/data/service/selectServicePage.do?page=1&sortColumn=&sortDirection=&infId=DGSEEAHU34YPXN0IBBIT20995946&infSeq=1&searchWord=%ED%95%99%EC%9B%90+%ED%98%84%ED%99%A9) / (아직 한개더 못함)
+- 출처(주소): 경기 데이터드림 (https://data.gg.go.kr/portal/data/service/selectServicePage.do?page=1&sortColumn=&sortDirection=&infId=DGSEEAHU34YPXN0IBBIT20995946&infSeq=1&searchWord=%ED%95%99%EC%9B%90+%ED%98%84%ED%99%A9)[https://www.schoolinfo.go.kr/ei/ss/Pneiss_b01_s0.do#none](https://www.schoolinfo.go.kr/ei/ss/Pneiss_b01_s0.do#none)
 - 기간·행 수·열 수: 2026.02.22
 - 사용한 열: 시군명,  구/읍명동명
 - 개인 단위 정보 없음 확인: 예 / 아니요
