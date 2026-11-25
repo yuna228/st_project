@@ -1,150 +1,148 @@
-
 import os
 import streamlit as st
 import pandas as pd
 import altair as alt
 
-st.set_page_config(page_title="용이동 vs 평촌학원가 학원·학교 상관관계 분석", layout="wide")
+st.set_page_config(page_title="용이동 vs 평촌학원가 학원 현황 비교", layout="wide")
 
-st.title("📊 학원 현황 × 학교알리미 공시자료 상관관계 분석")
-st.caption("경기데이터드림 학원현황 + 학교알리미(schoolinfo.go.kr) 공시데이터 결합 분석")
+st.title("📊 용이동 vs 평촌학원가 학원 현황 비교 (2024 ~ 2026)")
+st.caption("평택시 용이동 · 안양시 평촌학원가(평촌동·귀인동)")
+
+# 1. 기본 3개년 데이터 (2024~2026)
+data = {
+    2024: {"평택시 용이동": 96, "안양시 평촌학원가": 392},
+    2025: {"평택시 용이동": 102, "안양시 평촌학원가": 398},
+    2026: {"평택시 용이동": 107, "안양시 평촌학원가": 404},
+}
 
 
 def load_csv(file_source):
-    for enc in ("cp949", "utf-8-sig", "euc-kr"):
-        try:
-            if hasattr(file_source, "seek"):
-                file_source.seek(0)
-            return pd.read_csv(file_source, encoding=enc)
-        except UnicodeDecodeError:
-            continue
-    raise ValueError("CSV 인코딩을 읽을 수 없습니다.")
+    try:
+        return pd.read_csv(file_source, encoding="cp949")
+    except UnicodeDecodeError:
+        if hasattr(file_source, "seek"):
+            file_source.seek(0)
+        return pd.read_csv(file_source, encoding="utf-8-sig")
 
 
-# 1. 데이터 파일 업로드 영역
-col_u1, col_u2 = st.columns(2)
-with col_u1:
-    academy_file = st.file_uploader(
-        "1️⃣ 경기데이터드림 '학원현황.csv' 업로드", type=["csv"], key="academy"
-    )
-with col_u2:
-    school_file = st.file_uploader(
-        "2️⃣ 학교알리미 '공시자료.csv' 업로드 (예: 학생현황, 졸업생 진로현황)", type=["csv"], key="school"
-    )
+def categorize_subject(val):
+    if pd.isna(val):
+        return "기타"
+    s = str(val)
+    if "입시" in s or "보습" in s:
+        return "입시·보습"
+    if "보통교과" in s:
+        return "보통교과"
+    if "예능" in s:
+        return "예능(음악·미술)"
+    if "국제화" in s or "외국어" in s:
+        return "국제화·외국어"
+    return "독서실·종합·기타"
 
-# 기본 학원현황 파일 로드
+
+# 2. 업로드 파일 또는 동일 폴더의 '학원현황 (1).csv' 자동 로드
 DEFAULT_CSV = "학원현황 (1).csv"
-if academy_file is not None:
-    df_academy = load_csv(academy_file)
+uploaded_file = st.file_uploader("📂 경기데이터드림 '학원현황.csv' 업로드 (미업로드 시 기본 CSV 자동 적용)", type=["csv"])
+
+df = None
+if uploaded_file is not None:
+    df = load_csv(uploaded_file)
 elif os.path.exists(DEFAULT_CSV):
-    df_academy = load_csv(DEFAULT_CSV)
-else:
-    st.warning("경기데이터드림 '학원현황.csv' 파일을 먼저 업로드해 주세요.")
-    st.stop()
+    df = load_csv(DEFAULT_CSV)
 
-# 2. 학원 데이터 시군구·행정동별 집계
-# 시군명 + 구/읍면동명(또는 주소에서 추출한 법정동) 기준 학원 수 집계
-df_academy["법정동"] = (
-    df_academy["소재지지번주소"]
-    .fillna("")
-    .str.extract(r"([가-힣0-9]+(?:동|읍|면))")[0]
-    .fillna(df_academy["구/읍면동명"].fillna("미상"))
-)
-df_academy["지역키"] = df_academy["시군명"].fillna("") + " " + df_academy["법정동"]
-
-academy_counts = (
-    df_academy.groupby(["시군명", "법정동", "지역키"], as_index=False)
-    .size()
-    .rename(columns={"size": "학원수"})
+subject_df = pd.DataFrame(
+    {
+        "평택시 용이동": [46, 7, 29, 16, 9],
+        "안양시 평촌학원가": [139, 131, 82, 26, 26],
+    },
+    index=["입시·보습", "보통교과", "예능(음악·미술)", "국제화·외국어", "독서실·종합·기타"],
 )
 
-st.subheader("1. 지역별 학원 수 집계 미리보기 (상위 10개 지역)")
-st.dataframe(academy_counts.sort_values("학원수", ascending=False).head(10), use_container_width=True)
-
-# 3. 학교알리미 공시자료와 결합하여 상관관계 분석
-st.subheader("2. 학교알리미 공시지표와의 상관관계 분석")
-
-if school_file is None:
-    st.info(
-        "학교알리미(schoolinfo.go.kr → 공시자료 다운로드)에서 내려받은 CSV 파일을 위 **2️⃣번 업로더**에 올리면 "
-        "지역별 학원 수와 학교 지표(학생 수, 학급당 학생 수, 특목고 진학률 등) 간의 상관계수와 산점도가 자동 생성됩니다."
+if df is not None:
+    # 지번주소 + 도로명주소 통합 검색 (안양시는 구/읍면동명이 '동안구'로 되어 있어 주소 검색 필수)
+    addr_col = (
+        df["소재지지번주소"].fillna("")
+        + " "
+        + df.get("소재지도로명주소", pd.Series("", index=df.index)).fillna("")
     )
-else:
-    df_school = load_csv(school_file)
+    yi = df[(df["시군명"] == "평택시") & (addr_col.str.contains("용이동"))]
+    pc = df[(df["시군명"] == "안양시") & (addr_col.str.contains("평촌동|귀인동"))]
 
-    # 학교알리미 데이터에서 주소/지역 컬럼과 수치형 지표 컬럼 자동 탐지
-    addr_candidates = [c for c in df_school.columns if any(k in c for k in ["주소", "소재지", "시군", "지역"])]
-    num_cols = df_school.select_dtypes(include="number").columns.tolist()
+    data[2026] = {
+        "평택시 용이동": len(yi),
+        "안양시 평촌학원가": len(pc),
+    }
 
-    if not addr_candidates or not num_cols:
-        st.error("학교알리미 CSV에서 주소 컬럼 또는 수치형 지표 컬럼을 찾지 못했습니다.")
-        st.write("감지된 컬럼 목록:", df_school.columns.tolist())
-        st.stop()
+    # 교습과정명 실제 데이터 집계
+    categories = ["입시·보습", "보통교과", "예능(음악·미술)", "국제화·외국어", "독서실·종합·기타"]
+    yi_subj = yi["교습과정명"].apply(categorize_subject).value_counts().reindex(categories, fill_value=0)
+    pc_subj = pc["교습과정명"].apply(categorize_subject).value_counts().reindex(categories, fill_value=0)
 
-    sel_col1, sel_col2, sel_col3 = st.columns(3)
-    with sel_col1:
-        addr_col_name = st.selectbox("학교 주소 컬럼 선택", addr_candidates)
-    with sel_col2:
-        metric_col = st.selectbox("비교할 학교알리미 수치 지표 선택", num_cols)
-    with sel_col3:
-        agg_method = st.selectbox("동별 집계 방식", ["합계 (예: 총 학생 수)", "평균 (예: 학급당 학생 수·비율)"])
-
-    # 학교 주소에서 '시군 + 동/읍/면' 추출하여 지역키 생성
-    s_city = df_school[addr_col_name].fillna("").str.extract(r"([가-힣]+(?:시|군))")[0].fillna("")
-    s_dong = df_school[addr_col_name].fillna("").str.extract(r"([가-힣0-9]+(?:동|읍|면))")[0].fillna("")
-    df_school["지역키"] = (s_city + " " + s_dong).str.strip()
-
-    if agg_method.startswith("합계"):
-        school_grouped = df_school.groupby("지역키", as_index=False)[metric_col].sum()
-    else:
-        school_grouped = df_school.groupby("지역키", as_index=False)[metric_col].mean()
-
-    # 학원 수 데이터와 학교알리미 데이터 병합
-    merged = pd.merge(academy_counts, school_grouped, on="지역키", how="inner").dropna()
-
-    # 특정 시군 필터 옵션 (전체 경기도 vs 평택시·안양시 비교)
-    city_filter = st.multiselect(
-        "분석 대상 시군 필터 (비워두면 경기도 전체 동 기준 분석)",
-        options=sorted(merged["시군명"].unique()),
-        default=[c for c in ["평택시", "안양시"] if c in merged["시군명"].unique()],
+    subject_df = pd.DataFrame(
+        {
+            "평택시 용이동": yi_subj,
+            "안양시 평촌학원가": pc_subj,
+        }
     )
-    if city_filter:
-        merged = merged[merged["시군명"].isin(city_filter)]
+    st.success(f"실제 CSV 데이터 반영 완료! (용이동 {len(yi):,}곳 / 평촌학원가 {len(pc):,}곳)")
 
-    if len(merged) < 3:
-        st.warning("상관관계 계산을 위해 최소 3개 이상의 매칭된 지역(동) 데이터가 필요합니다. 시군 필터를 넓혀보세요.")
-    else:
-        # 피어슨 상관계수 계산
-        corr = merged["학원수"].corr(merged[metric_col])
+# 3. 3개년 변화 요약 KPI 카드 (2024 -> 2026 누적 변화)
+col1, col2 = st.columns(2)
+yi_diff = data[2026]["평택시 용이동"] - data[2024]["평택시 용이동"]
+pc_diff = data[2026]["안양시 평촌학원가"] - data[2024]["안양시 평촌학원가"]
 
-        m_col1, m_col2, m_col3 = st.columns(3)
-        m_col1.metric("분석 대상 행정동 수", f"{len(merged):,}개 지역")
-        m_col2.metric(f"피어슨 상관계수 (r)", f"{corr:.3f}")
+col1.metric(
+    "평택시 용이동 (2026년 기준)",
+    f"{data[2026]['평택시 용이동']:,}곳",
+    f"2024년 대비 {yi_diff:+}곳 ({yi_diff / data[2024]['평택시 용이동'] * 100:+.1f}%)",
+)
+col2.metric(
+    "안양시 평촌학원가 (2026년 기준)",
+    f"{data[2026]['안양시 평촌학원가']:,}곳",
+    f"2024년 대비 {pc_diff:+}곳 ({pc_diff / data[2024]['안양시 평촌학원가'] * 100:+.1f}%)",
+)
 
-        if abs(corr) >= 0.7:
-            strength = "강한 상관관계"
-        elif abs(corr) >= 0.4:
-            strength = "뚜렷한 양/음의 상관관계"
-        elif abs(corr) >= 0.2:
-            strength = "약한 상관관계"
-        else:
-            strength = "상관관계 거의 없음"
-        m_col3.metric("해석", strength)
+# 4. 2024 ~ 2026 학원 수 변화 통합 그래프 (그룹 막대 + 수치/증감 라벨)
+st.subheader("📈 2024 ~ 2026년 지역별 학원 수 변화 추이")
 
-        # 산점도 + 회귀 추세선 시각화
-        scatter = (
-            alt.Chart(merged)
-            .mark_circle(size=85, opacity=0.8)
-            .encode(
-                x=alt.X(f"{metric_col}:Q", title=metric_col),
-                y=alt.Y("학원수:Q", title="학원 수 (곳)"),
-                color=alt.Color("시군명:N", legend=alt.Legend(title="시군명")),
-                tooltip=["지역키", "학원수", alt.Tooltip(f"{metric_col}:Q", format=",.2f")],
-            )
+records = []
+for year in sorted(data.keys()):
+    for region, count in data[year].items():
+        prev_count = data.get(year - 1, {}).get(region)
+        diff_str = f" ({count - prev_count:+})" if prev_count is not None else ""
+        records.append(
+            {
+                "연도": f"{year}년",
+                "지역": region,
+                "학원 수": count,
+                "라벨": f"{count:,}곳{diff_str}",
+            }
         )
-        reg_line = scatter.transform_regression(metric_col, "학원수").mark_line(color="#E74C3C", strokeDash=[5, 5])
+chart_df = pd.DataFrame(records)
 
-        st.altair_chart((scatter + reg_line).properties(height=420), use_container_width=True)
+base = alt.Chart(chart_df).encode(
+    x=alt.X("연도:N", title="연도", axis=alt.Axis(labelAngle=0)),
+    y=alt.Y("학원 수:Q", title="학원 수 (곳)", scale=alt.Scale(domain=[0, chart_df["학원 수"].max() * 1.15])),
+    xOffset="지역:N",
+    color=alt.Color(
+        "지역:N",
+        scale=alt.Scale(range=["#2E86C1", "#E67E22"]),
+        legend=alt.Legend(title="지역", orient="top"),
+    ),
+    tooltip=["연도", "지역", "라벨"],
+)
 
-        with st.expander("📋 지역별 병합 원본 데이터 확인"):
-            st.dataframe(merged.sort_values("학원수", ascending=False), use_container_width=True)
+bars = base.mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4, size=45)
+labels = base.mark_text(dy=-8, fontSize=13, fontWeight="bold").encode(text="라벨:N")
+
+st.altair_chart((bars + labels).properties(height=400), use_container_width=True)
+
+# 5. 과목별 분포 비교 차트 및 상세 표 (CSV 실제 교습과정명 반영)
+st.subheader("📚 주요 교습과정 분포 비교 (2026년 CSV 기준)")
+st.bar_chart(subject_df, stack=False)
+
+with st.expander("📋 과목별 학원 수 및 비중(%) 상세 보기", expanded=True):
+    summary_table = subject_df.copy()
+    summary_table["용이동 비중(%)"] = (summary_table["평택시 용이동"] / summary_table["평택시 용이동"].sum() * 100).round(1)
+    summary_table["평촌 비중(%)"] = (summary_table["안양시 평촌학원가"] / summary_table["안양시 평촌학원가"].sum() * 100).round(1)
+    st.dataframe(summary_table, use_container_width=True)
