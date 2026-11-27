@@ -130,8 +130,8 @@ def render_school_tab(region_label, dong_label, school_label, df_sub, subject_df
 
     st.divider()
 
-    # 회귀 분석 방법 및 선택 이유 + 학교별 회귀 분석 그래프
-    st.subheader(f"📐 {school_label} 회귀 분석: 학원 밀집도(원인)와 학업 성취도(결과)")
+    # 회귀 분석 방법 및 선택 이유 + 2024 → 2025 → 2026 순서로 정렬되는 회귀 분석 그래프
+    st.subheader(f"📐 {school_label} 회귀 분석: 학원 수(원인)와 학업 성취도(결과)")
     st.info(
         "**사용한 방법 : 회귀**\n"
         "- **이유 :** 학원 밀집도(원인)가 변할 때 학업 성취도(결과)가 어떻게 변하는지, 두 숫자(연속형 데이터) 사이의 인과관계를 예측하고 검증해야 하므로 회귀 분석을 선택했습니다."
@@ -139,41 +139,43 @@ def render_school_tab(region_label, dong_label, school_label, df_sub, subject_df
 
     reg_col1, reg_col2 = st.columns(2)
 
+    # 회귀 그래프 1: 등록 학원 수(2024 → 2025 → 2026 순서) -> 성취도 A등급 비율(%)
     with reg_col1:
         base_reg_a = alt.Chart(df_sub).encode(
-            x=alt.X("인구1만명당_학원수:Q", title="학원 밀집도 (인구 1만 명당 학원 수, 개소)", scale=alt.Scale(zero=False, padding=20)),
+            x=alt.X("학원수:Q", title="등록 학원 수 (개소) [2024 → 2025 → 2026]", scale=alt.Scale(zero=False, padding=25)),
             y=alt.Y("A등급_비율(%):Q", title="성취도 A등급 비율 (%)", scale=alt.Scale(zero=False, padding=20)),
-            tooltip=["연도_문자", "인구수(명)", "학원수", "인구1만명당_학원수", "A등급_비율(%)"],
+            tooltip=["연도_문자", "학원수", "인구1만명당_학원수", "A등급_비율(%)"],
         )
         pts_a = base_reg_a.mark_circle(size=140, color=bar_color)
         txt_a = base_reg_a.mark_text(dy=-14, fontSize=11, fontWeight="bold").encode(text="연도_문자:N")
-        line_a = base_reg_a.transform_regression("인구1만명당_학원수", "A등급_비율(%)").mark_line(
+        line_a = base_reg_a.transform_regression("학원수", "A등급_비율(%)").mark_line(
             color="#ef4444", strokeDash=[6, 4], strokeWidth=2.5
         )
-        r_a = df_sub["인구1만명당_학원수"].corr(df_sub["A등급_비율(%)"])
+        r_a = df_sub["학원수"].corr(df_sub["A등급_비율(%)"])
         st.altair_chart(
             (pts_a + line_a + txt_a).properties(
-                title=f"회귀분석 ① 학원 밀집도 → A등급 비율 (R² = {r_a**2:.3f})",
+                title=f"회귀분석 ① 학원 수 → A등급 비율 (R² = {r_a**2:.3f})",
                 height=320,
             ),
             use_container_width=True,
         )
 
+    # 회귀 그래프 2: 등록 학원 수(2024 → 2025 → 2026 순서) -> 국·영·수 평균점수(점)
     with reg_col2:
         base_reg_avg = alt.Chart(df_sub).encode(
-            x=alt.X("인구1만명당_학원수:Q", title="학원 밀집도 (인구 1만 명당 학원 수, 개소)", scale=alt.Scale(zero=False, padding=20)),
+            x=alt.X("학원수:Q", title="등록 학원 수 (개소) [2024 → 2025 → 2026]", scale=alt.Scale(zero=False, padding=25)),
             y=alt.Y("국영수_평균점수:Q", title="국·영·수 평균 점수 (점)", scale=alt.Scale(zero=False, padding=20)),
-            tooltip=["연도_문자", "인구수(명)", "학원수", "인구1만명당_학원수", "국영수_평균점수"],
+            tooltip=["연도_문자", "학원수", "인구1만명당_학원수", "국영수_평균점수"],
         )
         pts_avg = base_reg_avg.mark_circle(size=140, color=bar_color)
         txt_avg = base_reg_avg.mark_text(dy=-14, fontSize=11, fontWeight="bold").encode(text="연도_문자:N")
-        line_avg = base_reg_avg.transform_regression("인구1만명당_학원수", "국영수_평균점수").mark_line(
+        line_avg = base_reg_avg.transform_regression("학원수", "국영수_평균점수").mark_line(
             color="#ef4444", strokeDash=[6, 4], strokeWidth=2.5
         )
-        r_avg = df_sub["인구1만명당_학원수"].corr(df_sub["국영수_평균점수"])
+        r_avg = df_sub["학원수"].corr(df_sub["국영수_평균점수"])
         st.altair_chart(
             (pts_avg + line_avg + txt_avg).properties(
-                title=f"회귀분석 ② 학원 밀집도 → 국·영·수 평균점수 (R² = {r_avg**2:.3f})",
+                title=f"회귀분석 ② 학원 수 → 국·영·수 평균점수 (R² = {r_avg**2:.3f})",
                 height=320,
             ),
             use_container_width=True,
