@@ -1,3 +1,5 @@
+import os
+import json
 import streamlit as st
 import pandas as pd
 import altair as alt
@@ -104,14 +106,15 @@ pc_df = clean_df[clean_df["지역"] == "안양 평촌"].sort_values("연도")
 yi_df = clean_df[clean_df["지역"] == "평택 용이동"].sort_values("연도")
 
 # ---------------------------------------------------------
-# 3. 5개 페이지(탭) 섹션 구성
+# 3. 6개 페이지(탭) 섹션 구성
 # ---------------------------------------------------------
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "1️⃣ 평촌중학교 (안양 평촌)",
     "2️⃣ 용이중학교 (평택 용이동)",
     "3️⃣ 학원수·인구 대비 성취도 비교",
     "4️⃣ 데이터 해석 및 질문 연결",
-    "5️⃣ 데이터 개요 & 결측·이상치"
+    "5️⃣ 데이터 개요 & 결측·이상치",
+    "6️⃣ 연구 한계점 및 후속 과제"
 ])
 
 def render_school_tab(region_label, dong_label, school_label, df_sub, subject_df, bar_color):
@@ -127,7 +130,7 @@ def render_school_tab(region_label, dong_label, school_label, df_sub, subject_df
 
     st.divider()
 
-    # [신규 추가] 회귀 분석 방법 및 선택 이유 + 학교별 회귀 분석 그래프
+    # 회귀 분석 방법 및 선택 이유 + 학교별 회귀 분석 그래프
     st.subheader(f"📐 {school_label} 회귀 분석: 학원 밀집도(원인)와 학업 성취도(결과)")
     st.info(
         "**사용한 방법 : 회귀**\n"
@@ -136,7 +139,6 @@ def render_school_tab(region_label, dong_label, school_label, df_sub, subject_df
 
     reg_col1, reg_col2 = st.columns(2)
 
-    # 회귀 그래프 1: 학원 밀집도 -> 성취도 A등급 비율(%)
     with reg_col1:
         base_reg_a = alt.Chart(df_sub).encode(
             x=alt.X("인구1만명당_학원수:Q", title="학원 밀집도 (인구 1만 명당 학원 수, 개소)", scale=alt.Scale(zero=False, padding=20)),
@@ -157,7 +159,6 @@ def render_school_tab(region_label, dong_label, school_label, df_sub, subject_df
             use_container_width=True,
         )
 
-    # 회귀 그래프 2: 학원 밀집도 -> 국·영·수 평균점수(점)
     with reg_col2:
         base_reg_avg = alt.Chart(df_sub).encode(
             x=alt.X("인구1만명당_학원수:Q", title="학원 밀집도 (인구 1만 명당 학원 수, 개소)", scale=alt.Scale(zero=False, padding=20)),
@@ -384,15 +385,139 @@ with tab5:
     st.dataframe(overview_df, hide_index=True, use_container_width=True)
 
     st.divider()
-    st.subheader("2️⃣ 결측치·이상치 구분 처리 기준 및 데이터 치우침(Bias) 점검")
+    st.subheader("2️⃣ 결측치·이상치 구분 처리 기준 및 전처리 전후 변화")
     st.markdown("""
     | 구분 | 판별 기준 | 처리 방법 | 처리 전후 행 수 변화 |
     | :--- | :--- | :--- | :--- |
     | **결측치(Missing Value)** | 핵심 식별자(`학교명`) 또는 분석 지표(`학원수`, `A등급_비율(%)`)가 `NaN/None`인 행 | 통계 왜곡을 막기 위해 평균 대치 대신 **해당 행 삭제(`dropna`)** | `8행` → `7행` (-1행) |
     | **이상치(Outlier)** | 행정동 단위 학원 수가 `2,000곳`을 초과하거나, 시험 평균 점수가 `0~100점` 범위를 벗어난 행 | 입력 오류로 판단하여 **정상 범위 필터링으로 제거** | `7행` → `6행` (-1행) |
-
-- **⚠️ 전처리로 생길 수 있는 데이터 치우침(Bias) 및 한계점:**
-  1. **행정구역 경계 치우침:** 평촌학원가는 평촌동뿐 아니라 귀인동·호계동 및 수도권 남부(과천·의왕·군포) 학생을 흡수하는 광역 상권이며, 용이동 학생들 역시 인접한 소사벌·비전동 프랜차이즈 학원을 이용하므로 단일 행정동 기준 집계 시 실제 사교육 수요와 괴리가 발생할 수 있습니다.
-  2. **폐업·휴원 미반영 치우침:** 경기데이터드림 기준 정상 등록 학원만 집계하고 휴원·소규모 개인과외교습자 데이터를 제외했으므로, 실제 사교육 참여 규모가 과소추정될 가능성이 있습니다.
     """)
-    
+
+# ---------------------------------------------------------
+# 6페이지: 연구 한계점 및 후속 과제 + 영구 저장 메모장
+# ---------------------------------------------------------
+with tab6:
+    st.header("⚠️ 본 연구의 한계점 및 데이터 치우침(Bias) 고찰")
+    st.caption("공공데이터 기반 회귀·상관 분석 과정에서 확인된 구조적 제약과 향후 보완 방향입니다.")
+
+    lim_col1, lim_col2 = st.columns(2)
+
+    with lim_col1:
+        st.subheader("1️⃣ 통계 및 분석 방법론의 한계")
+        st.warning("""
+        **① 시계열 표본 수 부족 (2024~2026년, 3개년 데이터)**
+        - 학교알리미 및 지자체 공개 시점이 최근 3개년(학교별 3개 관측치)에 한정되어 있어, 단순 선형 회귀선의 기울기와 결정계수($R^2$)를 장기적 추세로 일반화하기에는 표본 크기가 작습니다.
+        - 특히 평촌동은 2025년 일시적 전입 증가로 인해 학원 밀집도(인구 1만 명당 학원 수)가 출렁이면서 회귀 설명력($R^2 = 0.173$)이 낮게 나타나는 한계가 있습니다.
+
+        **② 상관관계와 인과관계의 구분 (교란 변수 미통제)**
+        - 회귀 분석에서 학원 밀집도와 성취도 간 양(+)의 방향성이 확인되었으나, **학부모의 사회경제적 지위(가구 소득·교육열), 학생의 자기주도학습 시간, 학교별 지필평가 출제 난이도 차이** 등 핵심 교란 변수(Confounding Variables)가 통제되지 않아 순수한 '학원 효과'만을 분리해 내기 어렵습니다.
+
+        **③ 학원의 양적 '개수' 중심 집계**
+        - 수강생 수백 명 규모의 대형 입시 단과학원과 정원 10명 내외의 소규모 피아노·미술 교습소를 모두 동일한 '1곳'으로 계산하여, 실제 교과 학습 투입량(강사 수·강의 시수)을 정확히 반영하지 못했습니다.
+        """)
+
+    with lim_col2:
+        st.subheader("2️⃣ 데이터 수집 및 공간적 치우침(Bias)")
+        st.error("""
+        **① 행정구역 경계로 인한 공간적 통학권 괴리**
+        - **안양 평촌학원가:** 행정구역상 평촌동·귀인동에 위치하지만 실제로는 안양시 전역은 물론 과천·의왕·군포 등 수도권 남부 학생들이 광역으로 유입됩니다. 따라서 평촌동 주민등록 인구만을 분모로 삼은 '인구 1만 명당 학원 수'는 실제 이용자 대비 과대 계산될 수 있습니다.
+        - **평택 용이동:** 신도시 학원가가 형성 중이나, 중학생 심화 입시 학원의 경우 용이동 학생들이 인접한 **소사벌지구(비전동·죽백동)** 상권으로 이동해 수강하는 비율이 높아 단일 행정동 기준 집계 시 실제 사교육 참여도가 과소추정됩니다.
+
+        **② 휴원·폐업 및 개인과외교습자 누락**
+        - 경기데이터드림 '학원현황' 데이터는 정상 등록된 학원·교습소 위주이므로, 신고제인 **개인과외교습자**나 온라인 인강 학습 비중이 반영되지 않아 사교육 전체 규모를 포괄하지 못하는 편향이 존재합니다.
+        """)
+
+    st.divider()
+    st.subheader("3️⃣ 한계점 보완을 위한 후속 연구 계획")
+
+    roadmap_df = pd.DataFrame({
+        "구분": ["데이터 확장", "공간 범위 보정", "교란 변수 통제", "질적 지표 반영"],
+        "현재 연구의 한계": [
+            "2024~2026년 3개년, 2개 학교 비교",
+            "단일 행정동(평촌동·용이동) 주소 기준 필터링",
+            "학원 밀집도 단일 독립변수만 사용한 단순 회귀",
+            "전체 등록 학원 수(개수) 단순 합산"
+        ],
+        "후속 연구 보완 방안": [
+            "최근 10개년 장기 시계열 및 경기도 내 31개 시·군 전체 중학교로 표본 확대",
+            "GIS 반경(학교 중심 2km·5km 생활권) 기반 학원 밀집도 재산출",
+            "가구 소득·교원 1인당 학생 수·학교 예산을 추가한 다중회귀분석 수행",
+            "교습과정별(입시·보습 vs 예체능) 분리 및 학원 일시수용능력(정원) 가중치 적용"
+        ]
+    })
+    st.dataframe(roadmap_df, use_container_width=True, hide_index=True)
+
+    # ---------------------------------------------------------
+    # 영구 저장 및 수정 가능한 메모 칸 (team_memo.json 파일 연동)
+    # ---------------------------------------------------------
+    st.divider()
+    st.subheader("📝 직접 작성하는 한계점 · 발표 메모장 (영구 저장 & 수정 가능)")
+    st.caption("아래 칸에 내용을 적고 '💾 저장하기'를 누르면 창을 닫았다 다시 열어도 그대로 유지됩니다. 언제든 고쳐서 다시 저장하거나 지울 수 있습니다.")
+
+    MEMO_FILE = "team_memo.json"
+
+    def load_saved_memo():
+        if os.path.exists(MEMO_FILE):
+            try:
+                with open(MEMO_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return {"title": "", "content": "", "updated_at": ""}
+        return {"title": "", "content": "", "updated_at": ""}
+
+    def save_memo_to_file(title_text, content_text):
+        from datetime import datetime
+        payload = {
+            "title": title_text,
+            "content": content_text,
+            "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        with open(MEMO_FILE, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        return payload
+
+    saved_data = load_saved_memo()
+
+    if "memo_title_input" not in st.session_state:
+        st.session_state["memo_title_input"] = saved_data.get("title", "")
+    if "memo_content_input" not in st.session_state:
+        st.session_state["memo_content_input"] = saved_data.get("content", "")
+
+    memo_title = st.text_input(
+        "제목 (선택)",
+        key="memo_title_input",
+        placeholder="예: 우리 팀이 추가로 발견한 한계점 및 발표 대본 메모"
+    )
+
+    memo_content = st.text_area(
+        "내용 입력 (자유롭게 작성하고 수정할 수 있습니다)",
+        key="memo_content_input",
+        height=220,
+        placeholder="여기에 직접 찾은 한계점, 선생님 질문 답변, 느낀 점 등을 적어주세요..."
+    )
+
+    btn_col1, btn_col2, btn_col3 = st.columns([1.2, 1.2, 2])
+    with btn_col1:
+        if st.button("💾 저장하기 (영구 보관)", use_container_width=True, type="primary"):
+            result = save_memo_to_file(memo_title, memo_content)
+            st.success(f"저장 완료! ({result['updated_at']})")
+
+    with btn_col2:
+        if st.button("🗑️ 전체 지우기", use_container_width=True):
+            save_memo_to_file("", "")
+            st.session_state["memo_title_input"] = ""
+            st.session_state["memo_content_input"] = ""
+            st.rerun()
+
+    with btn_col3:
+        backup_text = f"[{memo_title}]\n\n{memo_content}" if memo_title else memo_content
+        st.download_button(
+            label="📥 내 컴퓨터에 .txt로 백업 다운로드",
+            data=backup_text.encode("utf-8"),
+            file_name="연구_한계점_메모.txt",
+            mime="text/plain",
+            use_container_width=True
+        )
+
+    if saved_data.get("updated_at"):
+        st.caption(f"마지막 저장 시각: {saved_data['updated_at']}")
